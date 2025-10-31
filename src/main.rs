@@ -1,5 +1,6 @@
 use asky::{Confirm, Password, Select, SelectOption, Text};
 use clap::{Parser, Subcommand};
+use eyre::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead};
 
@@ -37,14 +38,6 @@ struct Project {
     name: String,
 }
 
-#[derive(Deserialize, Debug)]
-struct Issue {
-    id: u32,
-    iid: u32,
-    title: String,
-    state: String,
-}
-
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Cli {
@@ -58,12 +51,12 @@ enum Command {
     Configure,
 }
 
-fn send(cfg: CompleteConfig) {
+fn send(cfg: CompleteConfig) -> Result<()> {
     let stdin = io::stdin();
     let mut buffer = String::new();
 
     for line in stdin.lock().lines() {
-        buffer.push_str(format!("{}\\n", line.unwrap()).as_str());
+        buffer.push_str(format!("{}\\n", line?).as_str());
     }
 
     let client = reqwest::blocking::Client::new();
@@ -75,22 +68,19 @@ fn send(cfg: CompleteConfig) {
         .body(format!("{{\"body\":\"{}\"}}", buffer))
         .header("PRIVATE-TOKEN", cfg.gl_token)
         .header("Content-Type", " application/json")
-        .send()
-        .unwrap();
+        .send()?;
 
-    if !res.status().is_success() {
-        println!(
-            "Failed to send!\n\nResponse body:\n\n{}",
-            res.text().unwrap()
-        );
-        // FIXME(Julius)
-        std::process::exit(1)
-    }
+    ensure!(
+        res.status().is_success(),
+        "Attempted to post content. However server returned non-successfully"
+    );
+
+    Ok(())
 }
 
-fn configure() {
-    let instance = Text::new("Enter target Gitlab instance").prompt().unwrap();
-    let token = Password::new("What is your token").prompt().unwrap();
+fn configure() -> Result<()> {
+    let instance = Text::new("Enter target Gitlab instance").prompt()?;
+    let token = Password::new("What is your token").prompt()?;
 
     let client = reqwest::blocking::Client::new();
 
@@ -98,14 +88,15 @@ fn configure() {
         .get(format!("https://{}/api/v4/projects", instance))
         .header("PRIVATE-TOKEN", &token)
         .send()
-        .unwrap();
+        .context("Could not fetch programs")?;
 
-    if !projects_res.status().is_success() {
-        // FIXME(Julius)
-        return;
-    }
+    ensure!(
+        projects_res.status().is_success(),
+        "Attempted to fetch projects. However server returned non-sucessfully"
+    );
 
-    let projects: Vec<Project> = projects_res.json().unwrap();
+    let projects: Vec<Project> = projects_res.json()?;
+
     let project_options = projects
         .into_iter()
         .map(|p| SelectOption {
@@ -115,9 +106,7 @@ fn configure() {
         })
         .collect();
 
-    let selected_project = Select::new_complex("Select project", project_options)
-        .prompt()
-        .unwrap();
+    let selected_project = Select::new_complex("Select project", project_options).prompt()?;
 
     let selected_issue = Text::new("Select an issue")
         .initial("8")
@@ -128,8 +117,7 @@ fn configure() {
                 Err("")
             }
         })
-        .prompt()
-        .unwrap();
+        .prompt()?;
 
     // TODO(Julius): Check if project is valid
 
@@ -139,37 +127,43 @@ fn configure() {
         Config {
             gl_instance: Some(instance),
             gl_token: Some(token),
-            issue: Some(selected_issue.parse::<u32>().unwrap()),
+            issue: Some(selected_issue.parse::<u32>()?),
             project: Some(selected_project),
         },
-    )
-    .unwrap();
+    )?;
+
+    Ok(())
 }
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
-    let cfg: Config = confy::load("lb", None).unwrap();
+    let cfg: Config = confy::load("lb", None)?;
 
     match cli.command {
         Command::Send => match cfg.try_into() {
-            Ok(cfg) => send(cfg),
+            Ok(cfg) => {
+                send(cfg)?;
+            }
             Err(_) => {
                 println!("Error: Looks like the configuration is not complete.");
                 println!("Hint: Run `lb configure` to generate one.");
-                std::process::exit(1);
+                bail!("Incomplete configuration");
             }
         },
         Command::Configure => match <Config as TryInto<CompleteConfig>>::try_into(cfg) {
             Ok(_) => {
                 if Confirm::new("Looks like a config already exists. Want to create a new one?")
                     .initial(false)
-                    .prompt()
-                    .unwrap()
+                    .prompt()?
                 {
-                    configure();
+                    configure()?;
                 }
             }
-            Err(_) => configure(),
+            Err(_) => {
+                configure()?;
+            }
         },
-    }
+    };
+
+    Ok(())
 }

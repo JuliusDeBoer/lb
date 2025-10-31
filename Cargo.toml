@@ -3,6 +3,7 @@ name = "lb"
 version = "0.1.0"
 edition = "2024"
 description = "A tool to update your school logbook directly from the terminal"
+license = "BSD-2-Clause"
 
 [dependencies]
 asky = "0.1.1"

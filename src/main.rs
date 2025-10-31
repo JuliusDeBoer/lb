@@ -43,6 +43,11 @@ struct Project {
     name: String,
 }
 
+#[derive(Serialize, Debug)]
+struct Note {
+    body: String,
+}
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Cli {
@@ -64,7 +69,7 @@ fn send(cfg: CompleteConfig) -> Result<()> {
     let mut buffer = String::new();
 
     for line in stdin.lock().lines() {
-        buffer.push_str(format!("{}\\n", line?).as_str());
+        buffer.push_str(format!("{}\n", line?).as_str());
     }
 
     let client = reqwest::blocking::Client::new();
@@ -73,7 +78,7 @@ fn send(cfg: CompleteConfig) -> Result<()> {
             "https://{}/api/v4/projects/{}/issues/{}/notes",
             cfg.gl_instance, cfg.project, cfg.issue,
         ))
-        .body(format!("{{\"body\":\"{}\"}}", buffer))
+        .body(serde_json::to_string(&Note { body: buffer })?)
         .header("PRIVATE-TOKEN", cfg.gl_token)
         .header("Content-Type", " application/json")
         .send()?;

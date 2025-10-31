@@ -728,6 +728,7 @@ dependencies = [
  "eyre",
  "reqwest",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

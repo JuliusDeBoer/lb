@@ -1,0 +1,11 @@
+[package]
+name = "lb"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+asky = "0.1.1"
+clap = { version = "4.5.51", features = ["derive"] }
+confy = "2.0.0"
+reqwest = { version = "0.12.24", features = ["blocking", "json"] }
+serde = { version = "1.0.228", features = ["derive"] }

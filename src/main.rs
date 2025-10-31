@@ -1,6 +1,6 @@
 use asky::{Confirm, Password, Select, SelectOption, Text};
 use clap::{Parser, Subcommand};
-use eyre::{Context, Result, bail, ensure};
+use eyre::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead};
 
@@ -50,9 +50,12 @@ struct Cli {
     command: Command,
 }
 
+/// A tool to update your school logbook directly from the terminal
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Send a note from stdin to GitLab
     Send,
+    /// Generate a new configuration
     Configure,
 }
 
@@ -97,7 +100,7 @@ fn configure() -> Result<()> {
 
     ensure!(
         projects_res.status().is_success(),
-        "Attempted to fetch projects. However server returned non-sucessfully"
+        "Attempted to fetch projects. However server returned non-sucessfully. Probably because of an invalid access token."
     );
 
     let projects: Vec<Project> = projects_res.json()?;
@@ -139,7 +142,7 @@ fn configure() -> Result<()> {
 
         ensure!(
             issue_res.status().is_success(),
-            "Attempted to fetch issue with id {}. However server returned non-sucessfully",
+            "Attempted to fetch issue with id {}. However server returned non-sucessfully.",
             selected_issue
         );
 
@@ -152,7 +155,7 @@ fn configure() -> Result<()> {
 
     confy::store(
         "lb",
-        None,
+        Some("config"),
         Config {
             gl_instance: Some(instance),
             gl_token: Some(token),
@@ -161,12 +164,14 @@ fn configure() -> Result<()> {
         },
     )?;
 
+    println!("Config saved successfully!");
+
     Ok(())
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let cfg: Config = confy::load("lb", None)?;
+    let cfg: Config = confy::load("lb", Some("config"))?;
 
     match cli.command {
         Command::Send => match cfg.try_into() {
@@ -176,12 +181,12 @@ fn main() -> Result<()> {
             Err(_) => {
                 println!("Error: Looks like the configuration is not complete.");
                 println!("Hint: Run `lb configure` to generate one.");
-                bail!("Incomplete configuration");
+                std::process::exit(1);
             }
         },
         Command::Configure => match <Config as TryInto<CompleteConfig>>::try_into(cfg) {
             Ok(_) => {
-                if Confirm::new("Looks like a config already exists. Want to create a new one?")
+                if Confirm::new("Looks like a config already exists. Want to override the current configuration?")
                     .initial(false)
                     .prompt()?
                 {

@@ -33,6 +33,11 @@ impl TryInto<CompleteConfig> for Config {
 }
 
 #[derive(Deserialize, Debug)]
+struct Issue {
+    title: String,
+}
+
+#[derive(Deserialize, Debug)]
 struct Project {
     id: u32,
     name: String,
@@ -79,8 +84,8 @@ fn send(cfg: CompleteConfig) -> Result<()> {
 }
 
 fn configure() -> Result<()> {
-    let instance = Text::new("Enter target Gitlab instance").prompt()?;
-    let token = Password::new("What is your token").prompt()?;
+    let instance = Text::new("Enter target GitLab instance").prompt()?;
+    let token = Password::new("Enter your GitLab personal access token").prompt()?;
 
     let client = reqwest::blocking::Client::new();
 
@@ -108,18 +113,42 @@ fn configure() -> Result<()> {
 
     let selected_project = Select::new_complex("Select project", project_options).prompt()?;
 
-    let selected_issue = Text::new("Select an issue")
-        .initial("8")
-        .validate(|v| {
-            if v.parse::<u32>().is_ok() {
-                Ok(())
-            } else {
-                Err("")
-            }
-        })
-        .prompt()?;
+    let mut selected_issue: u32;
 
-    // TODO(Julius): Check if project is valid
+    loop {
+        selected_issue = Text::new("Select an issue")
+            .initial("8")
+            .validate(|v| {
+                if v.parse::<u32>().is_ok() {
+                    Ok(())
+                } else {
+                    Err("")
+                }
+            })
+            .prompt()?
+            .parse()?;
+
+        let issue_res = client
+            .get(format!(
+                "https://{}/api/v4/projects/{}/issues/{}",
+                instance, selected_project, selected_issue
+            ))
+            .header("PRIVATE-TOKEN", &token)
+            .send()
+            .context("Could not fetch programs")?;
+
+        ensure!(
+            issue_res.status().is_success(),
+            "Attempted to fetch issue with id {}. However server returned non-sucessfully",
+            selected_issue
+        );
+
+        let issue: Issue = issue_res.json()?;
+
+        if Confirm::new(format!("Select the issue: \"{}\"?", issue.title).as_str()).prompt()? {
+            break;
+        }
+    }
 
     confy::store(
         "lb",
@@ -127,7 +156,7 @@ fn configure() -> Result<()> {
         Config {
             gl_instance: Some(instance),
             gl_token: Some(token),
-            issue: Some(selected_issue.parse::<u32>()?),
+            issue: Some(selected_issue),
             project: Some(selected_project),
         },
     )?;

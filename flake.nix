@@ -6,12 +6,14 @@
     flake-parts.url = "github:hercules-ci/flake-parts";
     devshell.url = "github:numtide/devshell";
     crane.url = "github:ipetkov/crane";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
   };
 
   outputs = inputs@{ flake-parts, crane, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [
         inputs.devshell.flakeModule
+        inputs.treefmt-nix.flakeModule
       ];
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin" ];
       perSystem = { pkgs, ...}:

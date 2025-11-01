@@ -92,10 +92,16 @@ fn send(cfg: CompleteConfig) -> Result<()> {
 }
 
 fn configure() -> Result<()> {
-    let instance = Text::new("Enter target GitLab instance").prompt()?;
+    let mut instance = Text::new("Enter target GitLab instance").prompt()?;
     let token = Password::new("Enter your GitLab personal access token").prompt()?;
 
     let client = reqwest::blocking::Client::new();
+
+    if instance.starts_with("https://") {
+        instance = (instance[8..]).to_string();
+    } else if instance.starts_with("http://") {
+        instance = (instance[7..]).to_string();
+    }
 
     let projects_res = client
         .get(format!("https://{}/api/v4/projects", instance))
